@@ -13,7 +13,8 @@ import logging
 import asyncio
 import re
 from datetime import datetime, timedelta
-from config import DOWNLOAD_DIR, MAX_FILE_SIZE, PREMIUM_USERS, DAILY_LIMIT_FREE, DAILY_LIMIT_PREMIUM
+from config import DOWNLOAD_DIR, MAX_FILE_SIZE, PREMIUM_USERS, DAILY_LIMIT_FREE, DAILY_LIMIT_PREMIUM, DB_CHANNEL_ID, ALLOWED_GROUP_IDS
+from database import db
 # ----------------------------------------
 # 𝐌𝐀𝐃𝐄 𝐁𝐘 𝐀𝐁𝐇𝐈
 # 𝐓𝐆 𝐈𝐃 : @𝐂𝐋𝐔𝐓𝐂𝐇𝟎𝟎𝟖
@@ -29,7 +30,7 @@ logger = logging.getLogger(__name__)
 user_selections = defaultdict(lambda: defaultdict(dict))
 merge_files = defaultdict(lambda: defaultdict(list))
 status_messages = {}
-daily_limits = defaultdict(lambda: {'count': 0, 'last_reset': datetime.now()})
+# daily_limits = defaultdict(lambda: {'count': 0, 'last_reset': datetime.now()}) # Moved to DB
 last_update_time = defaultdict(lambda: 0)
 # ----------------------------------------
 # 𝐌𝐀𝐃𝐄 𝐁𝐘 𝐀𝐁𝐇𝐈
@@ -182,14 +183,20 @@ async def merge_files_ffmpeg(files: list, output_file: str):
             if sum(video_counts) > 1 and all(vc > 0 for vc in video_counts):
                 # Multiple videos: join them (concatenation)
                 inputs = [ffmpeg.input(f) for f in files]
-                v_streams = [i.video for i in inputs]
+
+                # To concatenate diverse videos, we need to scale them to a common resolution
+                # Let's use the resolution of the first video
+                first_v = next(s for s in probes[0]['streams'] if s['codec_type'] == 'video')
+                target_w, target_h = first_v['width'], first_v['height']
+
+                v_streams = [i.video.filter('scale', target_w, target_h).filter('setsar', 1) for i in inputs]
                 a_streams = []
                 for i, p in enumerate(probes):
                     if any(s['codec_type'] == 'audio' for s in p['streams']):
                         a_streams.append(inputs[i].audio)
                     else:
-                        # Add dummy audio if missing? No, concat filter needs same number of streams
-                        # This makes concatenation complex.
+                        # Add silent audio if missing to keep stream count consistent
+                        # This is more complex in ffmpeg-python, but we'll try to find at least one audio
                         pass
 
                 # If all have audio, join them
@@ -197,10 +204,10 @@ async def merge_files_ffmpeg(files: list, output_file: str):
                     joined = ffmpeg.concat(*[s for pair in zip(v_streams, a_streams) for s in pair], v=1, a=1).node
                     ffmpeg.output(joined[0], joined[1], output_file, vcodec='libx264', preset='veryfast', acodec='aac').run(overwrite_output=True)
                 else:
-                    # Join only video and use first audio
+                    # Join only video and use first audio found
                     joined_v = ffmpeg.concat(*v_streams, v=1, a=0).node[0]
                     if a_streams:
-                        ffmpeg.output(joined_v, a_streams[0], output_file, vcodec='libx264', preset='veryfast', acodec='copy').run(overwrite_output=True)
+                        ffmpeg.output(joined_v, a_streams[0], output_file, vcodec='libx264', preset='veryfast', acodec='aac').run(overwrite_output=True)
                     else:
                         ffmpeg.output(joined_v, output_file, vcodec='libx264', preset='veryfast').run(overwrite_output=True)
             else:
@@ -225,9 +232,9 @@ async def generate_thumbnail(input_file: str, output_path: str):
 # 𝐓𝐆 𝐈𝐃 : @𝐂𝐋𝐔𝐓𝐂𝐇𝟎𝟎𝟖
 # 𝐀𝐍𝐘 𝐈𝐒𝐒𝐔𝐄𝐒 𝐎𝐑 𝐀𝐃𝐃𝐈𝐍𝐆 𝐌𝐎𝐑𝐄 𝐓𝐇𝐈𝐍𝐆𝐬 𝐂𝐀𝐍 𝐂𝐎𝐍𝐓𝐀𝐂𝐓 𝐌𝐄
 # ----------------------------------------
-def check_daily_limit(user_id: int) -> bool:
+async def check_daily_limit(user_id: int) -> bool:
     now = datetime.now()
-    user_data = daily_limits[user_id]
+    user_data = await db.get_daily_limit(user_id)
     if now - user_data['last_reset'] > timedelta(days=1):
         user_data['count'] = 0
         user_data['last_reset'] = now
@@ -235,6 +242,7 @@ def check_daily_limit(user_id: int) -> bool:
     if user_data['count'] >= limit:
         return False
     user_data['count'] += 1
+    await db.update_daily_limit(user_id, user_data['count'], user_data['last_reset'])
     return True
 # ----------------------------------------
 # 𝐌𝐀𝐃𝐄 𝐁𝐘 𝐀𝐁𝐇𝐈
@@ -318,9 +326,17 @@ async def upload_with_progress(client: Client, chat_id: int, user_id: int, file_
                 await update_status_message(client, chat_id, user_id, f"Uploading: [{pbar} {percent}%]")
             if cur == total: bar.close()
         if output_format == "video":
-            await safe_telegram_call(client.send_video, chat_id, file_path, caption=caption, progress=progress, thumb=thumb if thumb and os.path.exists(thumb) else None, reply_to_message_id=reply_to_message_id)
+            sent_msg = await safe_telegram_call(client.send_video, chat_id, file_path, caption=caption, progress=progress, thumb=thumb if thumb and os.path.exists(thumb) else None, reply_to_message_id=reply_to_message_id)
         else:
-            await safe_telegram_call(client.send_document, chat_id, file_path, caption=caption, progress=progress, thumb=thumb if thumb and os.path.exists(thumb) else None, reply_to_message_id=reply_to_message_id)
+            sent_msg = await safe_telegram_call(client.send_document, chat_id, file_path, caption=caption, progress=progress, thumb=thumb if thumb and os.path.exists(thumb) else None, reply_to_message_id=reply_to_message_id)
+
+        # Forward to DB Channel
+        if DB_CHANNEL_ID and sent_msg:
+            try:
+                await sent_msg.forward(DB_CHANNEL_ID)
+            except Exception as fe:
+                logger.error(f"Failed to forward to DB channel: {str(fe)}")
+
     except Exception as e:
         logger.error(f"Upload failed: {str(e)}")
         await update_status_message(client, chat_id, user_id, f"Upload failed: {str(e)}")

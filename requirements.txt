@@ -3,3 +3,5 @@ tgcrypto
 ffmpeg-python
 tqdm
 flask
+motor
+pymongo
