@@ -28,7 +28,7 @@ import logging
 # 𝐓𝐆 𝐈𝐃 : @𝐂𝐋𝐔𝐓𝐂𝐇𝟎𝟎𝟖
 # 𝐀𝐍𝐘 𝐈𝐒𝐒𝐔𝐄𝐒 𝐎𝐑 𝐀𝐃𝐃𝐈𝐍𝐆 𝐌𝐎𝐑𝐄 𝐓𝐇𝐈𝐍𝐆𝐬 𝐂𝐀𝐍 𝐂𝐎𝐍𝐓𝐀𝐂𝐓 𝐌𝐄
 # --
-from utils import user_selections, safe_telegram_call, update_status_message
+from utils import user_selections, safe_telegram_call, update_status_message, authorized_only
 # ----------------------------------------
 # 𝐌𝐀𝐃𝐄 𝐁𝐘 𝐀𝐁𝐇𝐈
 # 𝐓𝐆 𝐈𝐃 : @𝐂𝐋𝐔𝐓𝐂𝐇𝟎𝟎𝟖
@@ -61,6 +61,7 @@ class handle_message:
 
 def register_cancel_handlers(app: Client):
     @app.on_message(filters.command("cancel"))
+    @authorized_only
     async def cancel_process(client: Client, message: Message):
         chat_id, user_id = message.chat.id, message.from_user.id
         if user_id not in user_selections.get(chat_id, {}) or not user_selections[chat_id][user_id].get('processing'):

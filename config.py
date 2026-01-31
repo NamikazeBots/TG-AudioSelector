@@ -6,11 +6,20 @@
 # ----------------------------------------
 
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Telegram API credentials
-API_ID = 22884130  # Replace with your API ID
-API_HASH = "a69e8b16dac958f1bd31eee360ec53fa"  # Replace with your API Hash
-BOT_TOKEN = "7798706143:AAHsAm7SJEswWq4szQQSgK6D5Jb-aFkxDig"  # Replace with your Bot Token
+API_ID = int(os.environ.get("API_ID", 0))
+API_HASH = os.environ.get("API_HASH", "")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
+
+# MongoDB URL
+MONGO_DB_URL = os.environ.get("MONGO_DB_URL", "")
+
+# DB Channel ID
+DB_CHANNEL_ID = int(os.environ.get("DB_CHANNEL_ID", 0))
 
 # Directory for downloads
 DOWNLOAD_DIR = "downloads"
@@ -22,13 +31,13 @@ ALLOWED_GROUP_IDS = [
 ]
 
 # Owner user ID
-OWNER_ID = 7840980054  # Owner's user ID
+OWNER_ID = int(os.environ.get("OWNER_ID", 0))
 
 # Maximum file size (e.g., 4GB)
 MAX_FILE_SIZE = 4 * 1024 * 1024 * 1024  # 4GB in bytes
 
 # Premium users and daily limits
-PREMIUM_USERS = {5756495153}  # Add premium user IDs here
+PREMIUM_USERS = set()  # Add premium user IDs here
 DAILY_LIMIT_FREE = 15  # Videos per day for free users
 DAILY_LIMIT_PREMIUM = 30  # Videos per day for premium users
 
