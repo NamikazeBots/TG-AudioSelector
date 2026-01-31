@@ -7,9 +7,9 @@
 import os
 
 # Telegram API credentials
-API_ID =   # Replace with your API ID
-API_HASH = ""  # Replace with your API Hash
-BOT_TOKEN = ""  # Replace with your Bot Token
+API_ID = 22884130  # Replace with your API ID
+API_HASH = "a69e8b16dac958f1bd31eee360ec53fa"  # Replace with your API Hash
+BOT_TOKEN = "7798706143:AAHsAm7SJEswWq4szQQSgK6D5Jb-aFkxDig"  # Replace with your Bot Token
 
 # ----------------------------------------
 # 𝐌𝐀𝐃𝐄 𝐁𝐘 𝐀𝐁𝐇𝐈
@@ -33,7 +33,7 @@ ALLOWED_GROUP_IDS = [
 ]
 
 # Owner user ID
-OWNER_ID =   # Owner's user ID
+OWNER_ID = 7840980054  # Owner's user ID
 
 # Maximum file size (e.g., 4GB)
 MAX_FILE_SIZE = 4 * 1024 * 1024 * 1024  # 4GB in bytes
