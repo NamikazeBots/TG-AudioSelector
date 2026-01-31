@@ -5,16 +5,20 @@
 # ----------------------------------------
 
 import os
+import zipfile
+import shutil
 from pyrogram import Client, filters
 from pyrogram.types import Message
 from pyrogram.enums import ChatType
 import logging
-from config import DOWNLOAD_DIR, ALLOWED_GROUP_IDS, OWNER_ID, MAX_FILE_SIZE, PREMIUM_USERS, DAILY_LIMIT_FREE, DAILY_LIMIT_PREMIUM
+from config import DOWNLOAD_DIR, OWNER_ID, MAX_FILE_SIZE, PREMIUM_USERS, DAILY_LIMIT_FREE, DAILY_LIMIT_PREMIUM
+from database import db
 from utils import (
     get_audio_tracks, select_audio_tracks, download_with_progress,
     upload_with_progress, create_track_selection_keyboard,
     create_format_selection_keyboard, user_selections, sanitize_filename,
-    validate_video_file, generate_thumbnail, check_daily_limit, safe_telegram_call
+    validate_video_file, generate_thumbnail, check_daily_limit, safe_telegram_call,
+    authorized_only
 )
 # ----------------------------------------
 # 𝐌𝐀𝐃𝐄 𝐁𝐘 𝐀𝐁𝐇𝐈
@@ -29,16 +33,14 @@ logger = logging.getLogger(__name__)
 # ----------------------------------------
 def register_video_handlers(app: Client):
     @app.on_message(filters=filters.video | filters.document)
+    @authorized_only
     async def handle_message(client: Client, message: Message):
         chat_id, user_id = message.chat.id, message.from_user.id
-        if user_id != OWNER_ID and chat_id not in ALLOWED_GROUP_IDS:
-            logger.info(f"Unauthorized access attempt: user_id={user_id}, chat_id={chat_id}, allowed_ids={ALLOWED_GROUP_IDS}")
-            await safe_telegram_call(message.reply, "This bot is not authorized here.")
-            return
+
         if user_id != OWNER_ID and message.chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
             await safe_telegram_call(message.reply, "This bot works only in groups.")
             return
-        if not check_daily_limit(user_id):
+        if not await check_daily_limit(user_id):
             limit = DAILY_LIMIT_PREMIUM if user_id in PREMIUM_USERS else DAILY_LIMIT_FREE
             await safe_telegram_call(message.reply, f"Daily limit of {limit} videos reached.")
             return
@@ -57,16 +59,62 @@ def register_video_handlers(app: Client):
         name = message.video.file_name if message.video else message.document.file_name
         if not name:
             name = f"video_{message.id}.mp4"
-        if user_id in user_selections.get(chat_id, {}) and 'default_name' in user_selections[chat_id][user_id]:
-            name = user_selections[chat_id][user_id]['default_name']
+        # Load user settings from DB
+        if db:
+            user_settings = await db.get_all_user_settings(user_id)
+            if 'default_name' in user_settings:
+                name = user_settings['default_name']
+            if 'default_caption' in user_settings:
+                user_selections.setdefault(chat_id, {}).setdefault(user_id, {})['default_caption'] = user_settings['default_caption']
+
         path = os.path.join(DOWNLOAD_DIR, f"{user_id}_{sanitize_filename(name)}")
         user_selections.setdefault(chat_id, {}).setdefault(user_id, {'processing': True, 'queue': [], 'original_message_id': message.id})
         user_selections[chat_id][user_id]['status'] = "Starting download..."
         msg = await safe_telegram_call(message.reply, "Starting download...")
         user_selections[chat_id][user_id]['status_message_id'] = msg.id
         await download_with_progress(client, message, path, chat_id, user_id)
+
+        # Zip file support
+        if name.lower().endswith(".zip"):
+            user_selections[chat_id][user_id]['status'] = "Extracting zip..."
+            await safe_telegram_call(client.edit_message_text, chat_id, msg.id, "Extracting zip...")
+            extract_dir = os.path.join(DOWNLOAD_DIR, f"extract_{user_id}_{message.id}")
+            os.makedirs(extract_dir, exist_ok=True)
+            try:
+                with zipfile.ZipFile(path, 'r') as zip_ref:
+                    zip_ref.extractall(extract_dir)
+                os.remove(path) # Remove zip file
+
+                # Find the first video file
+                video_file = None
+                for root, dirs, files in os.walk(extract_dir):
+                    for f in files:
+                        f_path = os.path.join(root, f)
+                        if validate_video_file(f_path):
+                            video_file = f_path
+                            break
+                    if video_file: break
+
+                if not video_file:
+                    shutil.rmtree(extract_dir)
+                    await safe_telegram_call(client.edit_message_text, chat_id, msg.id, "No valid video file found in zip.")
+                    user_selections[chat_id][user_id]['processing'] = False
+                    return
+
+                # Move video file to DOWNLOAD_DIR and update path
+                new_path = os.path.join(DOWNLOAD_DIR, f"{user_id}_{sanitize_filename(os.path.basename(video_file))}")
+                os.rename(video_file, new_path)
+                path = new_path
+                shutil.rmtree(extract_dir)
+            except Exception as e:
+                logger.error(f"Zip extraction failed: {str(e)}")
+                if os.path.exists(extract_dir): shutil.rmtree(extract_dir)
+                await safe_telegram_call(client.edit_message_text, chat_id, msg.id, f"Zip extraction failed: {str(e)}")
+                user_selections[chat_id][user_id]['processing'] = False
+                return
+
         if not validate_video_file(path):
-            os.remove(path)
+            if os.path.exists(path): os.remove(path)
             await safe_telegram_call(client.edit_message_text, chat_id, msg.id, "Invalid video file.")
             user_selections[chat_id][user_id]['processing'] = False
             return
@@ -129,7 +177,14 @@ def register_video_handlers(app: Client):
             await safe_telegram_call(client.edit_message_text, chat_id, status_message_id, "Processing video...")
             select_audio_tracks(src, dst, list(info['selected_tracks']), fmt)
             generate_thumbnail(src, thumb)
-            cap = info.get('default_caption', "Here is your video.")
+
+            # Use default caption from DB if available
+            cap = info.get('default_caption')
+            if not cap and db:
+                cap = await db.get_user_setting(user_id, 'default_caption')
+            if not cap:
+                cap = "Here is your video."
+
             info['status'] = "Uploading video..."
             await safe_telegram_call(client.edit_message_text, chat_id, status_message_id, "Uploading video...")
             await upload_with_progress(client, chat_id, user_id, dst, cap, fmt, thumb, reply_to_message_id=info.get('original_message_id'))
