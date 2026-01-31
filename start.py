@@ -71,7 +71,13 @@ def register_start_handlers(app: Client):
         # Main message
         caption = (
             f"<pre>Hᴇʏᴏ ᴄᴜᴛɪᴇ</pre>\n"
-            f"<b><blockquote>›› ɪ’ᴍ ᴀ ʜᴀɴᴅʏ ᴀᴜᴅɪᴏ ꜱᴇʟᴇᴄᴛᴏʀ ʙᴏᴛ ᴍᴀᴅᴇ ᴛᴏ ʜᴇʟᴘ ʏᴏᴜ ᴄʜᴏᴏꜱᴇ ᴏʀ ʀᴇᴍᴏᴠᴇ ᴀᴜᴅɪᴏ ᴛʀᴀᴄᴋꜱ ꜰʀᴏᴍ ʏᴏᴜʀ ᴠɪᴅᴇᴏꜱ!</b></blockquote>\n"
+            f"<b><blockquote>›› I'm a powerful video processing bot!</b></blockquote>\n"
+            f"<b>Features:</b>\n"
+            f"- Audio Track Selection\n"
+            f"- Hard Sub support\n"
+            f"- Mediainfo (/mediainfo)\n"
+            f"- Resolution support (480p, 720p, 1080p)\n"
+            f"- Merging support (/merge)\n\n"
             f"<b><blockquote>◈ <a href='https://t.me/clutch008'>ABHI : ᴡʜᴇʀᴇ ᴀʀɪsᴇ</a></b></blockquote>"
         )
 
