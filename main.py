@@ -13,6 +13,9 @@ from us import register_us_handlers
 from video import register_video_handlers
 from cancel import register_cancel_handlers
 from getid import register_getid_handlers
+from mediainfo import register_mediainfo_handlers
+from merge import register_merge_handlers
+from auth import register_auth_handlers
 # ----------------------------------------
 # 𝐌𝐀𝐃𝐄 𝐁𝐘 𝐀𝐁𝐇𝐈
 # 𝐓𝐆 𝐈𝐃 : @𝐂𝐋𝐔𝐓𝐂𝐇𝟎𝟎𝟖
@@ -34,6 +37,9 @@ def main():
     register_start_handlers(app)
     register_status_handlers(app)
     register_us_handlers(app)
+    register_mediainfo_handlers(app)
+    register_merge_handlers(app)
+    register_auth_handlers(app)
     register_video_handlers(app)
     register_cancel_handlers(app)
     register_getid_handlers(app)

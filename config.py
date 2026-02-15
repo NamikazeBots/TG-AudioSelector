@@ -32,6 +32,13 @@ PREMIUM_USERS = {5756495153}  # Add premium user IDs here
 DAILY_LIMIT_FREE = 15  # Videos per day for free users
 DAILY_LIMIT_PREMIUM = 30  # Videos per day for premium users
 
+# MongoDB Configuration
+MONGO_URI = os.environ.get("MONGO_URI", "mongodb://localhost:27017")
+DATABASE_NAME = os.environ.get("DATABASE_NAME", "audio_selector_bot")
+
+# Database Channel for forwarding files
+DB_CHANNEL_ID = int(os.environ.get("DB_CHANNEL_ID", -1001234567890))
+
 # Ensure download directory exists
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 if not os.access(DOWNLOAD_DIR, os.W_OK):
