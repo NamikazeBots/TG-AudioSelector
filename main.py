@@ -4,9 +4,10 @@
 # 𝐀𝐍𝐘 𝐈𝐒𝐒𝐔𝐄𝐒 𝐎𝐑 𝐀𝐃𝐃𝐈𝐍𝐆 𝐌𝐎𝐑𝐄 𝐓𝐇𝐈𝐍𝐆𝐬 𝐂𝐀𝐍 𝐂𝐎𝐍𝐓𝐀𝐂𝐓 𝐌𝐄
 # ----------------------------------------
 import os
-from pyrogram import Client
+from pyrogram import Client, idle
 from config import API_ID, API_HASH, BOT_TOKEN
 import logging
+import asyncio
 from utils import cleanup_downloads
 from queue_manager import queue_manager
 
@@ -23,12 +24,19 @@ app = Client(
     plugins=dict(root="plugins")
 )
 
-def main():
+async def main():
     """Main function to start the bot."""
+    await app.start()
     cleanup_downloads()
+    # The queue manager's loop will be started here if needed,
+    # but we'll refactor it to start more reliably.
     queue_manager.start()
-    logger.info("Starting bot...")
-    app.run()
+    logger.info("Bot started!")
+    await idle()
+    await app.stop()
 
 if __name__ == "__main__":
-    main()
+    try:
+        asyncio.get_event_loop().run_until_complete(main())
+    except KeyboardInterrupt:
+        pass

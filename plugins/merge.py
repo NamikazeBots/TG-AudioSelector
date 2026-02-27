@@ -31,7 +31,12 @@ async def merge_cmd(client: Client, message: Message):
     m = await message.reply(f"Merging {len(files_to_merge)} files...")
     await task.ready_event.wait()
 
-    paths = []
+    if task.cancel_event.is_set():
+        queue_manager.remove_task(task.id)
+        await m.edit("Task cancelled.")
+        return
+
+    paths, list_path, out = [], None, None
     try:
         for i, f_msg in enumerate(files_to_merge):
             p = os.path.join(DOWNLOAD_DIR, f"m_{task.id}_{i}.mp4")
@@ -51,8 +56,9 @@ async def merge_cmd(client: Client, message: Message):
         await m.edit(f"Failed: {e}")
     finally:
         for f in paths + [list_path, out]:
-            if os.path.exists(f): os.remove(f)
+            if f and os.path.exists(f): os.remove(f)
         if user_id in user_selections.get(chat_id, {}) and 'merge_files' in user_selections[chat_id][user_id]:
             user_selections[chat_id][user_id]['merge_files'] = []
         queue_manager.remove_task(task.id)
-        await m.delete()
+        try: await m.delete()
+        except: pass

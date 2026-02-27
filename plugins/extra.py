@@ -58,8 +58,14 @@ async def mediainfo_cmd(client: Client, message: Message):
     m = await message.reply("Fetching media info...")
     await task.ready_event.wait()
 
-    path = os.path.join(DOWNLOAD_DIR, f"info_{task.id}_{rep.id}")
+    if task.cancel_event.is_set():
+        queue_manager.remove_task(task.id)
+        await m.edit("Task cancelled.")
+        return
+
+    path = None
     try:
+        path = os.path.join(DOWNLOAD_DIR, f"info_{task.id}_{rep.id}")
         await download_with_progress(client, rep, path, message.chat.id, message.from_user.id, status_msg_id=m.id)
         import json
         process = await asyncio.create_subprocess_exec(
@@ -79,5 +85,5 @@ async def mediainfo_cmd(client: Client, message: Message):
     except Exception as e:
         await m.edit(f"Failed: {e}")
     finally:
-        if os.path.exists(path): os.remove(path)
+        if path and os.path.exists(path): os.remove(path)
         queue_manager.remove_task(task.id)
