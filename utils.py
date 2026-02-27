@@ -184,47 +184,53 @@ async def safe_telegram_call(func, *args, **kwargs):
 # 𝐓𝐆 𝐈𝐃 : @𝐂𝐋𝐔𝐓𝐂𝐇𝟎𝟎𝟖
 # 𝐀𝐍𝐘 𝐈𝐒𝐒𝐔𝐄𝐒 𝐎𝐑 𝐀𝐃𝐃𝐈𝐍𝐆 𝐌𝐎𝐑𝐄 𝐓𝐇𝐈𝐍𝐆𝐬 𝐂𝐀𝐍 𝐂𝐎𝐍𝐓𝐀𝐂𝐓 𝐌𝐄
 # ----------------------------------------
-async def download_with_progress(client: Client, message: Message, file_path: str, chat_id: int, user_id: int):
+async def download_with_progress(client: Client, message: Message, file_path: str, chat_id: int, user_id: int, status_msg_id: int = None, notify_selection: bool = False):
     try:
-        file_size = message.video.file_size if message.video else message.document.file_size
+        media = message.video or message.document or message.audio
+        file_size = media.file_size if media else 0
         if file_size and file_size > MAX_FILE_SIZE:
             raise ValueError(f"File too large: {file_size} bytes")
-        bar, last_percent = None, user_selections[chat_id][user_id].get('last_percent', 0)
-        status_message_id = user_selections[chat_id][user_id].get('status_message_id')
+
+        bar, last_percent = None, 0
+        user_selections[chat_id][user_id]['last_percent'] = 0
+
         async def progress(cur, total):
             nonlocal bar, last_percent
             if not bar: bar = tqdm(total=total, unit='B', unit_scale=True, desc=f"Downloading {user_id}", leave=False)
             bar.n = cur; bar.refresh()
             percent = int((cur / total) * 100)
-            if percent >= last_percent + 5 or cur == total:
+            if (percent >= last_percent + 5 or cur == total) and status_msg_id:
                 last_percent = percent
                 user_selections[chat_id][user_id]['last_percent'] = percent
                 pbar = "█" * (percent//5) + " " * (20-percent//5)
                 await safe_telegram_call(
                     client.edit_message_text,
                     chat_id,
-                    status_message_id,
+                    status_msg_id,
                     f"Downloading: [{pbar} {percent}%]"
                 )
             if cur == total: bar.close()
+
         await client.download_media(message, file_path, progress=progress)
-        # Notify user after download completes
-        user = await client.get_users(user_id)
-        user_name = user.username if user.username else user.first_name
-        await safe_telegram_call(
-            client.send_message,
-            chat_id,
-            f"@{user_name} your media has been downloaded, now select the tracks.",
-            reply_to_message_id=message.id
-        )
+
+        if notify_selection:
+            user = await client.get_users(user_id)
+            user_name = user.username if user.username else user.first_name
+            await safe_telegram_call(
+                client.send_message,
+                chat_id,
+                f"@{user_name} your media has been downloaded, now select the tracks.",
+                reply_to_message_id=message.id
+            )
     except Exception as e:
         logger.error(f"Download failed: {str(e)}")
-        await safe_telegram_call(
-            client.edit_message_text,
-            chat_id,
-            status_message_id,
-            f"Download failed: {str(e)}"
-        )
+        if status_msg_id:
+            await safe_telegram_call(
+                client.edit_message_text,
+                chat_id,
+                status_msg_id,
+                f"Download failed: {str(e)}"
+            )
         raise
 # ----------------------------------------
 # 𝐌𝐀𝐃𝐄 𝐁𝐘 𝐀𝐁𝐇𝐈
