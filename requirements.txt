@@ -6,3 +6,5 @@ flask
 motor
 dnspython
 python-dotenv
+psutil
+speedtest-cli

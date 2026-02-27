@@ -5,6 +5,7 @@
 # ----------------------------------------
 from collections import defaultdict
 import os
+import shutil
 import ffmpeg
 from pyrogram import Client
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
@@ -36,6 +37,20 @@ last_update_time = defaultdict(lambda: 0)
 # 𝐓𝐆 𝐈𝐃 : @𝐂𝐋𝐔𝐓𝐂𝐇𝟎𝟎𝟖
 # 𝐀𝐍𝐘 𝐈𝐒𝐒𝐔𝐄𝐒 𝐎𝐑 𝐀𝐃𝐃𝐈𝐍𝐆 𝐌𝐎𝐑𝐄 𝐓𝐇𝐈𝐍𝐆𝐬 𝐂𝐀𝐍 𝐂𝐎𝐍𝐓𝐀𝐂𝐓 𝐌𝐄
 # ----------------------------------------
+def cleanup_downloads():
+    if os.path.exists(DOWNLOAD_DIR):
+        for filename in os.listdir(DOWNLOAD_DIR):
+            file_path = os.path.join(DOWNLOAD_DIR, filename)
+            try:
+                if os.path.isfile(file_path) or os.path.islink(file_path):
+                    os.unlink(file_path)
+                elif os.path.isdir(file_path):
+                    shutil.rmtree(file_path)
+            except Exception as e:
+                logger.error(f'Failed to delete {file_path}. Reason: {e}')
+    else:
+        os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+
 def sanitize_filename(filename: str) -> str:
     if not isinstance(filename, str):
         filename = str(filename) if filename is not None else "default_video"
@@ -72,28 +87,55 @@ def get_audio_tracks(input_file: str):
 # 𝐓𝐆 𝐈𝐃 : @𝐂𝐋𝐔𝐓𝐂𝐇𝟎𝟎𝟖
 # 𝐀𝐍𝐘 𝐈𝐒𝐒𝐔𝐄𝐒 𝐎𝐑 𝐀𝐃𝐃𝐈𝐍𝐆 𝐌𝐎𝐑𝐄 𝐓𝐇𝐈𝐍𝐆𝐬 𝐂𝐀𝐍 𝐂𝐎𝐍𝐓𝐀𝐂𝐓 𝐌𝐄
 # ----------------------------------------
-def select_audio_tracks(input_file: str, output_file: str, selected_indices: list, output_format: str):
+async def run_ffmpeg(args: list):
+    process = await asyncio.create_subprocess_exec(
+        'ffmpeg', *args,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE
+    )
+    stdout, stderr = await process.communicate()
+    if process.returncode != 0:
+        logger.error(f"FFmpeg failed with return code {process.returncode}")
+        logger.error(f"Stderr: {stderr.decode()}")
+        raise Exception(f"FFmpeg failed: {stderr.decode()}")
+    return stdout, stderr
+
+async def select_audio_tracks(input_file: str, output_file: str, selected_indices: list, output_format: str, resolution: str = None):
     try:
-        probe = ffmpeg.probe(input_file)
-        audio_streams = [s for s in probe['streams'] if s['codec_type'] == 'audio']
-        if not audio_streams or not selected_indices:
-            raise ValueError("No audio tracks selected")
-        stream = ffmpeg.input(input_file)
-        args = {'map': '0:v:0', 'c:v': 'copy'}
+        # Construct FFmpeg command manually for better control and async execution
+        args = ['-i', input_file, '-map', '0:v:0']
+
+        # Scaling if resolution is provided
+        if resolution:
+            res_map = {"480p": "854:480", "720p": "1280:720", "1080p": "1920:1080"}
+            scale = res_map.get(resolution)
+            if scale:
+                args.extend(['-vf', f'scale={scale}', '-c:v', 'libx264', '-preset', 'veryfast'])
+            else:
+                args.extend(['-c:v', 'copy'])
+        else:
+            args.extend(['-c:v', 'copy'])
+
         for idx in selected_indices:
-            args[f'map:{len(selected_indices)}'] = f'0:a:{idx}'
-        args['c:a'] = 'copy'
+            args.extend(['-map', f'0:a:{idx}'])
+
+        args.extend(['-c:a', 'copy'])
+
         if output_format == "mkv":
-            args['f'] = 'matroska'
-        stream = ffmpeg.output(stream, output_file, **args)
-        ffmpeg.run(stream, overwrite_output=True)
+            args.extend(['-f', 'matroska'])
+
+        args.append(output_file)
+        args.insert(0, '-y') # Overwrite output
+
+        await run_ffmpeg(args)
     except Exception as e:
         logger.error(f"Error processing file {input_file}: {str(e)}")
         raise
 
-def generate_thumbnail(input_file: str, output_path: str):
+async def generate_thumbnail(input_file: str, output_path: str):
     try:
-        ffmpeg.input(input_file, ss='00:00:01').output(output_path, vframes=1, format='image2').run(overwrite_output=True)
+        args = ['-y', '-ss', '00:00:01', '-i', input_file, '-vframes', '1', '-f', 'image2', output_path]
+        await run_ffmpeg(args)
     except Exception as e:
         logger.error(f"Thumbnail generation failed: {str(e)}")
         raise
