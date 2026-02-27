@@ -3,3 +3,6 @@ tgcrypto
 ffmpeg-python
 tqdm
 flask
+motor
+dnspython
+python-dotenv

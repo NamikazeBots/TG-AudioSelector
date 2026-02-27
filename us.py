@@ -10,7 +10,8 @@ import asyncio
 import random
 import logging
 from config import DAILY_LIMIT_FREE, DAILY_LIMIT_PREMIUM, PREMIUM_USERS
-from utils import user_selections, daily_limits, safe_telegram_call, sanitize_filename
+from utils import user_selections, daily_limits, safe_telegram_call, sanitize_filename, authorized_only
+from database import db
 # ----------------------------------------
 # 𝐌𝐀𝐃𝐄 𝐁𝐘 𝐀𝐁𝐇𝐈
 # 𝐓𝐆 𝐈𝐃 : @𝐂𝐋𝐔𝐓𝐂𝐇𝟎𝟎𝟖
@@ -54,6 +55,7 @@ def create_main_buttons():
 # ----------------------------------------
 def register_us_handlers(app: Client):
     @app.on_message(filters.command("us"))
+    @authorized_only
     async def set_user_settings(client: Client, message: Message):
         try:
             chat_id, user_id = message.chat.id, message.from_user.id
@@ -77,10 +79,15 @@ def register_us_handlers(app: Client):
                 user_selections[chat_id][user_id] = {'status': 'Idle', 'last_percent': 0}
             
             if not args:
-                config = user_selections[chat_id][user_id]
+                if db:
+                    config = await db.get_all_user_settings(user_id)
+                    count = await db.get_daily_count(user_id)
+                else:
+                    config = user_selections.get(chat_id, {}).get(user_id, {})
+                    count = daily_limits.get(user_id, {}).get('count', 0)
+
                 limit = DAILY_LIMIT_PREMIUM if user_id in PREMIUM_USERS else DAILY_LIMIT_FREE
-                daily_data = daily_limits.get(user_id, {'count': 0})
-                remaining = max(0, limit - daily_data['count'])
+                remaining = max(0, limit - count)
                 user = await client.get_users(user_id)
                 user_name = user.username if user.username else user.first_name
                 response = (
@@ -115,8 +122,12 @@ def register_us_handlers(app: Client):
                 return
             
             default_name, default_caption = sanitize_filename(args[0]), args[1]
-            user_selections[chat_id][user_id]['default_name'] = default_name
-            user_selections[chat_id][user_id]['default_caption'] = default_caption
+            if db:
+                await db.set_user_setting(user_id, 'default_name', default_name)
+                await db.set_user_setting(user_id, 'default_caption', default_caption)
+            else:
+                user_selections[chat_id][user_id]['default_name'] = default_name
+                user_selections[chat_id][user_id]['default_caption'] = default_caption
             await safe_telegram_call(
                 app.send_message,
                 chat_id=chat_id,

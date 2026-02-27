@@ -9,7 +9,7 @@ from pyrogram.enums import ChatAction, ParseMode
 import asyncio
 import random
 import logging
-from utils import user_selections, safe_telegram_call
+from utils import user_selections, safe_telegram_call, authorized_only
 # ----------------------------------------
 # 𝐌𝐀𝐃𝐄 𝐁𝐘 𝐀𝐁𝐇𝐈
 # 𝐓𝐆 𝐈𝐃 : @𝐂𝐋𝐔𝐓𝐂𝐇𝟎𝟎𝟖
@@ -53,6 +53,7 @@ def create_main_buttons():
 # ----------------------------------------
 def register_status_handlers(app: Client):
     @app.on_message(filters.command("status"))
+    @authorized_only
     async def show_status(client: Client, message: Message):
         chat_id = message.chat.id
 

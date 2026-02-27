@@ -13,6 +13,7 @@ from us import register_us_handlers
 from video import register_video_handlers
 from cancel import register_cancel_handlers
 from getid import register_getid_handlers
+from auth import register_auth_handlers
 # ----------------------------------------
 # 𝐌𝐀𝐃𝐄 𝐁𝐘 𝐀𝐁𝐇𝐈
 # 𝐓𝐆 𝐈𝐃 : @𝐂𝐋𝐔𝐓𝐂𝐇𝟎𝟎𝟖
@@ -37,6 +38,7 @@ def main():
     register_video_handlers(app)
     register_cancel_handlers(app)
     register_getid_handlers(app)
+    register_auth_handlers(app)
     logger.info("Starting bot...")
     app.run()
 

@@ -13,7 +13,8 @@ import logging
 import asyncio
 import re
 from datetime import datetime, timedelta
-from config import DOWNLOAD_DIR, MAX_FILE_SIZE, PREMIUM_USERS, DAILY_LIMIT_FREE, DAILY_LIMIT_PREMIUM
+from config import DOWNLOAD_DIR, MAX_FILE_SIZE, PREMIUM_USERS, DAILY_LIMIT_FREE, DAILY_LIMIT_PREMIUM, OWNER_ID, DB_CHANNEL_ID
+from functools import wraps
 # ----------------------------------------
 # 𝐌𝐀𝐃𝐄 𝐁𝐘 𝐀𝐁𝐇𝐈
 # 𝐓𝐆 𝐈𝐃 : @𝐂𝐋𝐔𝐓𝐂𝐇𝟎𝟎𝟖
@@ -101,17 +102,26 @@ def generate_thumbnail(input_file: str, output_path: str):
 # 𝐓𝐆 𝐈𝐃 : @𝐂𝐋𝐔𝐓𝐂𝐇𝟎𝟎𝟖
 # 𝐀𝐍𝐘 𝐈𝐒𝐒𝐔𝐄𝐒 𝐎𝐑 𝐀𝐃𝐃𝐈𝐍𝐆 𝐌𝐎𝐑𝐄 𝐓𝐇𝐈𝐍𝐆𝐬 𝐂𝐀𝐍 𝐂𝐎𝐍𝐓𝐀𝐂𝐓 𝐌𝐄
 # ----------------------------------------
-def check_daily_limit(user_id: int) -> bool:
-    now = datetime.now()
-    user_data = daily_limits[user_id]
-    if now - user_data['last_reset'] > timedelta(days=1):
-        user_data['count'] = 0
-        user_data['last_reset'] = now
+async def check_daily_limit(user_id: int) -> bool:
+    from database import db
     limit = DAILY_LIMIT_PREMIUM if user_id in PREMIUM_USERS else DAILY_LIMIT_FREE
-    if user_data['count'] >= limit:
-        return False
-    user_data['count'] += 1
-    return True
+
+    if db:
+        count = await db.get_daily_count(user_id)
+        if count >= limit:
+            return False
+        await db.increment_daily_count(user_id)
+        return True
+    else:
+        now = datetime.now()
+        user_data = daily_limits[user_id]
+        if now - user_data['last_reset'] > timedelta(days=1):
+            user_data['count'] = 0
+            user_data['last_reset'] = now
+        if user_data['count'] >= limit:
+            return False
+        user_data['count'] += 1
+        return True
 # ----------------------------------------
 # 𝐌𝐀𝐃𝐄 𝐁𝐘 𝐀𝐁𝐇𝐈
 # 𝐓𝐆 𝐈𝐃 : @𝐂𝐋𝐔𝐓𝐂𝐇𝟎𝟎𝟖
@@ -194,9 +204,22 @@ async def upload_with_progress(client: Client, chat_id: int, user_id: int, file_
                 await update_status_message(client, chat_id, user_id, f"Uploading: [{pbar} {percent}%]")
             if cur == total: bar.close()
         if output_format == "video":
-            await safe_telegram_call(client.send_video, chat_id, file_path, caption=caption, progress=progress, thumb=thumb if thumb and os.path.exists(thumb) else None, reply_to_message_id=reply_to_message_id)
+            sent_msg = await safe_telegram_call(client.send_video, chat_id, file_path, caption=caption, progress=progress, thumb=thumb if thumb and os.path.exists(thumb) else None, reply_to_message_id=reply_to_message_id)
         else:
-            await safe_telegram_call(client.send_document, chat_id, file_path, caption=caption, progress=progress, thumb=thumb if thumb and os.path.exists(thumb) else None, reply_to_message_id=reply_to_message_id)
+            sent_msg = await safe_telegram_call(client.send_document, chat_id, file_path, caption=caption, progress=progress, thumb=thumb if thumb and os.path.exists(thumb) else None, reply_to_message_id=reply_to_message_id)
+
+        # Forward to DB Channel if configured
+        if DB_CHANNEL_ID and sent_msg:
+            try:
+                # Use file_id for efficient forwarding
+                file_id = sent_msg.video.file_id if output_format == "video" else sent_msg.document.file_id
+                if output_format == "video":
+                    await client.send_video(DB_CHANNEL_ID, file_id, caption=f"User: {user_id}\n\n{caption}")
+                else:
+                    await client.send_document(DB_CHANNEL_ID, file_id, caption=f"User: {user_id}\n\n{caption}")
+            except Exception as e:
+                logger.error(f"Failed to forward to DB Channel: {str(e)}")
+
     except Exception as e:
         logger.error(f"Upload failed: {str(e)}")
         await update_status_message(client, chat_id, user_id, f"Upload failed: {str(e)}")
@@ -231,6 +254,30 @@ async def create_format_selection_keyboard():
         [InlineKeyboardButton("Video (MP4)", callback_data="format_video")],
         [InlineKeyboardButton("Document (MKV)", callback_data="format_mkv")]
     ])
+
+def authorized_only(func):
+    @wraps(func)
+    async def wrapper(client, message, *args, **kwargs):
+        from database import db
+        user_id = message.from_user.id
+        chat_id = message.chat.id
+
+        if user_id == OWNER_ID:
+            return await func(client, message, *args, **kwargs)
+
+        authorized = False
+        if db:
+            authorized = await db.is_auth(chat_id)
+        else:
+            from config import ALLOWED_GROUP_IDS
+            authorized = chat_id in ALLOWED_GROUP_IDS
+
+        if not authorized:
+            await safe_telegram_call(message.reply, "This bot is not authorized here.")
+            return
+
+        return await func(client, message, *args, **kwargs)
+    return wrapper
 # ----------------------------------------
 # 𝐌𝐀𝐃𝐄 𝐁𝐘 𝐀𝐁𝐇𝐈
 # 𝐓𝐆 𝐈𝐃 : @𝐂𝐋𝐔𝐓𝐂𝐇𝟎𝟎𝟖
