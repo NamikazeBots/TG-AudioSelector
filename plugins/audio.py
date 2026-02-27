@@ -18,19 +18,26 @@ async def extract_audio_cmd(client: Client, message: Message):
     m = await message.reply(f"Extracting audio... Task ID: `{task.id}`. Waiting...")
     await task.ready_event.wait()
 
-    path = os.path.join(DOWNLOAD_DIR, f"ext_a_{task.id}_{rep.id}.mp4")
-    out = os.path.join(DOWNLOAD_DIR, f"audio_{task.id}_{rep.id}.mp3")
+    if task.cancel_event.is_set():
+        queue_manager.remove_task(task.id)
+        await m.edit("Task cancelled.")
+        return
+
+    path, out = None, None
     try:
+        path = os.path.join(DOWNLOAD_DIR, f"ext_a_{task.id}_{rep.id}.mp4")
+        out = os.path.join(DOWNLOAD_DIR, f"audio_{task.id}_{rep.id}.mp3")
         await download_with_progress(client, rep, path, message.chat.id, message.from_user.id, status_msg_id=m.id)
-        await run_ffmpeg(['-y', '-i', path, '-vn', '-acodec', 'libmp3lame', out])
+        await run_ffmpeg(['-y', '-i', path, '-vn', '-c:a', 'libmp3lame', out])
         await client.send_audio(message.chat.id, out, reply_to_message_id=rep.id)
     except Exception as e:
         await m.edit(f"Failed: {e}")
     finally:
         for f in [path, out]:
-            if os.path.exists(f): os.remove(f)
+            if f and os.path.exists(f): os.remove(f)
         queue_manager.remove_task(task.id)
-        await m.delete()
+        try: await m.delete()
+        except: pass
 
 @Client.on_message(filters.command("addaudio"))
 @authorized_only
@@ -56,10 +63,16 @@ async def addaudio_cmd(client: Client, message: Message):
     m = await message.reply("Processing addaudio...")
     await task.ready_event.wait()
 
-    v_path = os.path.join(DOWNLOAD_DIR, f"v_{task.id}.mp4")
-    a_path = os.path.join(DOWNLOAD_DIR, f"a_{task.id}.mp3")
-    out = os.path.join(DOWNLOAD_DIR, f"out_{task.id}.mp4")
+    if task.cancel_event.is_set():
+        queue_manager.remove_task(task.id)
+        await m.edit("Task cancelled.")
+        return
+
+    v_path, a_path, out = None, None, None
     try:
+        v_path = os.path.join(DOWNLOAD_DIR, f"v_{task.id}.mp4")
+        a_path = os.path.join(DOWNLOAD_DIR, f"a_{task.id}.mp3")
+        out = os.path.join(DOWNLOAD_DIR, f"out_{task.id}.mp4")
         await download_with_progress(client, vid_msg, v_path, message.chat.id, message.from_user.id, status_msg_id=m.id)
         await download_with_progress(client, aud_msg, a_path, message.chat.id, message.from_user.id, status_msg_id=m.id)
         await run_ffmpeg(['-y', '-i', v_path, '-i', a_path, '-map', '0:v', '-map', '1:a', '-c', 'copy', out])
@@ -68,9 +81,10 @@ async def addaudio_cmd(client: Client, message: Message):
         await m.edit(f"Failed: {e}")
     finally:
         for f in [v_path, a_path, out]:
-            if os.path.exists(f): os.remove(f)
+            if f and os.path.exists(f): os.remove(f)
         queue_manager.remove_task(task.id)
-        await m.delete()
+        try: await m.delete()
+        except: pass
 
 @Client.on_message(filters.command("remaudio"))
 @authorized_only
@@ -84,16 +98,23 @@ async def remaudio_cmd(client: Client, message: Message):
     m = await message.reply("Removing audio...")
     await task.ready_event.wait()
 
-    path = os.path.join(DOWNLOAD_DIR, f"rem_{task.id}.mp4")
-    out = os.path.join(DOWNLOAD_DIR, f"noaudio_{task.id}.mp4")
+    if task.cancel_event.is_set():
+        queue_manager.remove_task(task.id)
+        await m.edit("Task cancelled.")
+        return
+
+    path, out = None, None
     try:
+        path = os.path.join(DOWNLOAD_DIR, f"rem_{task.id}.mp4")
+        out = os.path.join(DOWNLOAD_DIR, f"noaudio_{task.id}.mp4")
         await download_with_progress(client, rep, path, message.chat.id, message.from_user.id, status_msg_id=m.id)
-        await run_ffmpeg(['-y', '-i', path, '-an', '-vcodec', 'copy', out])
+        await run_ffmpeg(['-y', '-i', path, '-an', '-c:v', 'copy', out])
         await client.send_video(message.chat.id, out, reply_to_message_id=rep.id)
     except Exception as e:
         await m.edit(f"Failed: {e}")
     finally:
         for f in [path, out]:
-            if os.path.exists(f): os.remove(f)
+            if f and os.path.exists(f): os.remove(f)
         queue_manager.remove_task(task.id)
-        await m.delete()
+        try: await m.delete()
+        except: pass

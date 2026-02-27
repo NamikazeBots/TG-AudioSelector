@@ -22,9 +22,15 @@ async def trim_cmd(client: Client, message: Message):
     m = await message.reply("Trimming video...")
     await task.ready_event.wait()
 
-    path = os.path.join(DOWNLOAD_DIR, f"tr_{task.id}.mp4")
-    out = os.path.join(DOWNLOAD_DIR, f"trimmed_{task.id}.mp4")
+    if task.cancel_event.is_set():
+        queue_manager.remove_task(task.id)
+        await m.edit("Task cancelled.")
+        return
+
+    path, out = None, None
     try:
+        path = os.path.join(DOWNLOAD_DIR, f"tr_{task.id}.mp4")
+        out = os.path.join(DOWNLOAD_DIR, f"trimmed_{task.id}.mp4")
         await download_with_progress(client, rep, path, message.chat.id, message.from_user.id, status_msg_id=m.id)
         await run_ffmpeg(['-y', '-i', path, '-ss', start_t, '-to', end_t, '-c', 'copy', out])
         await client.send_video(message.chat.id, out, reply_to_message_id=rep.id)
@@ -32,6 +38,7 @@ async def trim_cmd(client: Client, message: Message):
         await m.edit(f"Failed: {e}")
     finally:
         for f in [path, out]:
-            if os.path.exists(f): os.remove(f)
+            if f and os.path.exists(f): os.remove(f)
         queue_manager.remove_task(task.id)
-        await m.delete()
+        try: await m.delete()
+        except: pass
