@@ -11,15 +11,15 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Telegram API credentials
-API_ID = int(os.environ.get("API_ID", 0))
-API_HASH = os.environ.get("API_HASH", "")
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
+API_ID = int(os.environ.get("API_ID", 22884130))
+API_HASH = os.environ.get("API_HASH", "a69e8b16dac958f1bd31eee360ec53fa")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "8461268419:AAECYUlcecWsMkemTu1fW-Id2f-5A8AHT-0")
 
 # MongoDB URL
-MONGO_DB_URL = os.environ.get("MONGO_DB_URL", "")
+MONGO_DB_URL = os.environ.get("MONGO_DB_URL", "mongodb+srv://Fugui:tianlu@cluster0.6hyrp0r.mongodb.net/?appName=Cluster0")
 
 # DB Channel ID
-DB_CHANNEL_ID = int(os.environ.get("DB_CHANNEL_ID", 0))
+DB_CHANNEL_ID = int(os.environ.get("DB_CHANNEL_ID", "-1003215117714"))
 
 # Directory for downloads
 DOWNLOAD_DIR = "downloads"
@@ -31,7 +31,7 @@ ALLOWED_GROUP_IDS = [
 ]
 
 # Owner user ID
-OWNER_ID = int(os.environ.get("OWNER_ID", 0))
+OWNER_ID = int(os.environ.get("OWNER_ID", 8497538010))
 
 # Maximum file size (e.g., 4GB)
 MAX_FILE_SIZE = 4 * 1024 * 1024 * 1024  # 4GB in bytes
